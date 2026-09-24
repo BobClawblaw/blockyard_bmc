@@ -45,7 +45,7 @@ ARG BMC_REPO=https://github.com/BobClawblaw/bitcoinmachinecode.git
 # A FULL 40-character commit sha, a branch or a tag -- never an abbreviated sha. `git fetch`
 # resolves a ref name or a whole object id; a short sha is neither, and the build fails with
 # "couldn't find remote ref", which is how this line came to say so.
-ARG BMC_REF=fbb22e2303544eba955b6eb33c65b8fa6a8122b4
+ARG BMC_REF=bc0b9007d8b8c024ab411fff731beecd3035b08c
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
       nasm gcc make python3 binutils libc6-dev git ca-certificates \
@@ -79,7 +79,7 @@ RUN make -j"$(nproc)" \
 FROM debian:trixie-slim AS blockyard-src
 
 ARG BLOCKYARD_REPO=https://github.com/BobClawblaw/blockyard.git
-ARG BLOCKYARD_REF=6a8263bcf7517632ae811344d16739daf33238bd
+ARG BLOCKYARD_REF=1b4ce2b64cf817c3eb4fb6c68675fc6ad77eb198
 # 1 keeps the DOS Diversions (~26 MB of shareware whose terms permit redistributing the whole
 # package, exactly as BlockYard's own image ships it); 0 drops them and the pages say which
 # file is missing.
