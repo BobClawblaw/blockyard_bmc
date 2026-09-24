@@ -49,6 +49,9 @@ services:
       BMC_RPC_ALLOW_IP: ${SUBNET:-172.31.7.0/24}
       BMC_DBCACHE: ${BMC_DBCACHE:-1024}
       BMC_MAXCONNECTIONS: ${BMC_MAXCONNECTIONS:-48}
+      # 0 (the package default) puts the RPC server up BEFORE the block download, so the
+      # sync can be watched. 1 restores bmc's own default and is what a TIMED run wants.
+      BMC_BOOT_CATCHUP: ${BMC_BOOT_CATCHUP:-0}
       BMC_ADDRINDEX: ${BMC_ADDRINDEX:-1}
       BMC_TXINDEX: ${BMC_TXINDEX:-1}
       BMC_COINSTATSINDEX: ${BMC_COINSTATSINDEX:-1}

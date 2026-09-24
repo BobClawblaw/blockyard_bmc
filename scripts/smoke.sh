@@ -82,6 +82,18 @@ $DOCKER exec "$NODE" grep -q '^rpcallowip=' /data/bmc/bitcoin.conf || bad "rpcal
 $DOCKER exec "$NODE" grep -q '^printtoconsole=1' /data/bmc/bitcoin.conf || bad "printtoconsole missing: docker logs would be empty"
 ok "the rendered bitcoin.conf carries the rpcbind/rpcallowip pair and printtoconsole"
 
+# The setting that makes a sync watchable at all. Regtest cannot demonstrate its EFFECT -- there
+# is nothing to download at boot, which is exactly why this was missed until a mainnet run --
+# so what is pinned here is that the package ships it off, and that the timed-run escape hatch
+# turns it back on. docs/DESIGN.md, "The setting that makes it possible", has the measurement.
+$DOCKER exec "$NODE" grep -q '^bmc.bootcatchup=0' /data/bmc/bitcoin.conf \
+  || bad "bmc.bootcatchup is not 0: on mainnet the RPC server would not start until the whole sync finished"
+ok "bmc.bootcatchup=0 is shipped, so RPC comes up before the download rather than after it"
+$DOCKER run --rm -e BMC_CHAIN=main -e BMC_RPC_ALLOW_IP=10.0.0.0/8 -e BMC_BOOT_CATCHUP=1 \
+  --entrypoint node "$IMAGE" -e "import('/app/entrypoint/render-bmc-conf.mjs').then(m=>process.stdout.write(m.renderConf(process.env)))" \
+  | grep -q '^bmc.bootcatchup=1' || bad "BMC_BOOT_CATCHUP=1 should restore bmc's default for a timed run"
+ok "BMC_BOOT_CATCHUP=1 restores bmc's default, for a timed run"
+
 $DOCKER exec "$NODE" bmc_cli -datadir=/data/bmc -regtest getblockchaininfo >/dev/null 2>&1 \
   || bad "the node's own RPC did not answer: $($DOCKER exec "$NODE" bmc_cli -datadir=/data/bmc -regtest getblockchaininfo 2>&1 | head -2)"
 ok "answers RPC on the loopback inside its container"

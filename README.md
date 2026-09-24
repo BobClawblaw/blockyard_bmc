@@ -75,15 +75,22 @@ its datadir with the override file:
 sudo docker compose -f docker-compose.yml -f docker-compose.core.yml up -d
 ```
 
-**If you are timing a sync rather than watching one, stop the monitor first:**
+The package ships `BMC_BOOT_CATCHUP=0`, which is **not** bmc's default and is what makes
+watching possible at all: with bmc's default the block download runs inside the boot phase and
+the RPC server starts only after it, so on a fresh mainnet datadir nothing answers RPC until
+the entire sync has finished. Measured 2026-09-24 — boot phase `0.07 s` and chain RPCs live
+immediately with it off, against hours of an unreachable-looking node with it on.
+
+**If you are timing a sync rather than watching one, change both of these:**
 
 ```sh
-sudo docker compose stop blockyard      # the node runs entirely unpolled
-sudo docker compose start blockyard     # ...and watch again when it is done
+BMC_BOOT_CATCHUP=1                      # in .env -- bmc's own default
+sudo docker compose stop blockyard      # and leave the node entirely unpolled
 ```
 
-A polled node is a fine node and a poor stopwatch. `docs/DESIGN.md`, "Watching the sync", has
-the measured reasons — including the one cost that is known and the one that is not.
+Both, not either. Every published sync figure for bmc was measured that way, and this package
+inverts both — so a sync run as shipped is not comparable to them. A polled node is a fine node
+and a poor stopwatch. `docs/DESIGN.md`, "Watching the sync", has the measured reasons.
 
 ### Useful commands
 

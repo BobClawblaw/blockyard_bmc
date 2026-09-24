@@ -20,7 +20,7 @@ What occupies the unique part:
 | `/app/docs` (BlockYard's documentation, as its own image ships it) | 22 MB |
 | `/app/public` + `/app/server` | 3.5 MB |
 
-## Four things that were wrong, and how each announced itself
+## Five things that were wrong, and how each announced itself
 
 These are in the order they were hit. Each one is now a comment at the place it bit, because
 each would otherwise be rediscovered by whoever changes that line next.
@@ -84,6 +84,59 @@ unconditionally, which makes the behaviour identical on every chain rather than 
 
 Anything passed through `BMC_EXTRA_CONF` lands in the global scope and has to carry its own
 section if it is network-specific.
+
+### 5. RPC does not exist during a mainnet sync, with bmc's defaults
+
+The one the smoke test could never have found, because regtest has nothing to download at boot.
+
+First real mainnet run, 2026-09-24, on the 8 TB NVMe. The node came up, found 119 live peers
+and pulled headers at ~400 KB/s — and the monitor beside it reported it unreachable, which the
+UI renders as *"Bitcoin Machine Code is not answering RPC. connect ECONNREFUSED
+172.31.7.2:8332"*. Four minutes in there was still no `/data/bmc/main/.cookie`, no `[rpc]` line
+in the log, and `bmc_cli` answered `no credentials -- no readable cookie`.
+
+Not a packaging fault. With `bmc.bootcatchup=1` — bmc's default — the parallel block download
+runs *inside* the boot phase, and `serve_start_rpc()` sits after it
+(`asm/daemon/main.c:11857`, after `[boot] boot phase complete`). On an empty mainnet datadir
+that means nothing answers RPC until the entire sync is done. The node says so at boot, and
+names the switch:
+
+```
+[boot] boot catch-up runs BEFORE the UTXO engine starts: its blocks are connected by the
+       worker afterwards (bmc.bootcatchup=0 leaves the download to the worker, which
+       connects while it downloads)
+```
+
+Same empty datadir, `bmc.bootcatchup=0`:
+
+```
+[serve] download worker pid 15
+[boot] boot phase complete (0.07s total)
+[rpc]  no rpcuser/rpcpassword -- using cookie authentication
+[rpc]  block archive opened (chain RPCs live)
+```
+
+**0.07 seconds, against never-until-finished.** The package ships `BMC_BOOT_CATCHUP=0`; the
+timing caveat that comes with it is in `docs/DESIGN.md`.
+
+## What the first mainnet sync showed
+
+Started 2026-09-24 02:06 on `/mnt/nvme8tb`, `dbcache=8192`, 48 connections, ports moved clear
+of the production nodes (P2P 8433, monitor 21002). Ten minutes in, with the monitor watching
+throughout:
+
+```
+online: true | chain: main | sync: ibd | height 224,200 of 968,338 (23.15%)
+log   : parse ratio 1.0
+on disk: 18 GB
+```
+
+Which is the thing the package exists to do, doing it: a chain arriving from genesis, watched
+live in a browser. The early blocks are small and that 23% is not a rate to extrapolate from.
+
+**This run is not a timed one** and its duration should not be quoted: it ships
+`bootcatchup=0`, and the monitor polls it throughout. Both differ from how every published bmc
+figure was measured.
 
 ## What the smoke test proves
 

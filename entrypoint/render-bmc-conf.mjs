@@ -60,6 +60,31 @@ export function renderConf(env = process.env) {
   set('maxconnections', num(env.BMC_MAXCONNECTIONS, 48));
   lines.push('');
 
+  // RPC BEFORE THE DOWNLOAD, WHICH IS THE WHOLE POINT OF THIS PACKAGE, AND NOT bmc's DEFAULT.
+  //
+  // Measured on mainnet from an empty datadir, 2026-09-24. With bmc's default
+  // (bmc.bootcatchup=1) the parallel block download runs INSIDE the boot phase, and
+  // serve_start_rpc() is only reached once that finishes (asm/daemon/main.c:11857, after
+  // "[boot] boot phase complete"). So for the whole of a first sync -- eighteen hours and more
+  // -- the node writes no cookie, binds no RPC port, and a monitor beside it correctly reports
+  // it unreachable while it is demonstrably working. The node says so itself at boot:
+  //
+  //   [boot] boot catch-up runs BEFORE the UTXO engine starts: its blocks are connected by the
+  //          worker afterwards (bmc.bootcatchup=0 leaves the download to the worker, which
+  //          connects while it downloads)
+  //
+  // With it off, the same empty datadir reached "[boot] boot phase complete (0.07s total)" and
+  // "[rpc] block archive opened (chain RPCs live)" in the same second, and the monitor read the
+  // node as online from the first poll. A >=2000-block gap still triggers the parallel
+  // downloader later; what changes is that it no longer runs before anything can be watched.
+  //
+  // BMC_BOOT_CATCHUP=1 restores bmc's default. Use it for a TIMED run: every published sync
+  // figure for this node was measured that way, and this setting changes the strategy, so a
+  // sync run with it off is not comparable to them. See docs/DESIGN.md, "Watching the sync".
+  lines.push('# rpc is up before the download, so the sync can be watched (docs/DESIGN.md)');
+  set('bmc.bootcatchup', bool(env.BMC_BOOT_CATCHUP, false) ? 1 : 0);
+  lines.push('');
+
   // The indexes, which are most of the disk. addrindex is the one that changes what the
   // MONITOR has to do: with it on, the node serves address history and BlockYard does not
   // build and follow a second copy of it (~124 GB and half an hour on a fast machine).

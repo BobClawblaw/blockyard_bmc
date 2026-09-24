@@ -1,0 +1,35 @@
+# Put the chain on a disk you choose, instead of in Docker's own volume area.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.disk.yml up -d
+#
+# The default compose file uses a named volume, which lands under /var/lib/docker -- fine for a
+# test, wrong for 1.2 TB on a machine whose root filesystem is not where the space is. This
+# overrides that volume to a bind on a path you name.
+#
+# In .env:
+#   BMC_DATA_HOST=/mnt/big-nvme/blockyard-bmc/bmc
+#   BLOCKYARD_DATA_HOST=/mnt/big-nvme/blockyard-bmc/blockyard
+#
+# CREATE AND CHOWN BOTH PATHS FIRST. A bind mount does NOT inherit ownership from the image the
+# way a named volume does -- Docker binds the host directory exactly as it is, so a directory
+# root owns is a directory the container (uid 1000) cannot write:
+#
+#   sudo mkdir -p /mnt/big-nvme/blockyard-bmc/{bmc,blockyard}
+#   sudo chown -R 1000:1000 /mnt/big-nvme/blockyard-bmc
+#
+# The failure if you skip it is the same EACCES on bitcoin.conf that docs/BUILD-LOG.md records
+# for the named-volume case, and it looks identical.
+
+volumes:
+  bmc-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${BMC_DATA_HOST:?set BMC_DATA_HOST in .env to the directory that will hold the chain}
+  blockyard-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${BLOCKYARD_DATA_HOST:?set BLOCKYARD_DATA_HOST in .env to the monitor's data directory}

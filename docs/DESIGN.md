@@ -168,10 +168,46 @@ shape:
   and re-walked the chain."* That is a property of the bmc build of 2026-09-18, not of answering
   RPC. Production has moved on several deploys since.
 
-**So: monitoring a sync is supported and expected, and timing one is not.** Anyone running this
-package to produce a number rather than to watch a chain should stop the monitor first —
-`docker compose stop blockyard` — which leaves the node entirely unpolled, and start it again
-when the sync is done. That is one command, and it is in the README.
+### The setting that makes it possible, which is not bmc's default
+
+Found by running the thing, 2026-09-24, and it could not have been found any other way: on
+regtest there is nothing to download at boot, so the package's own smoke test never met it.
+
+With bmc's default, `bmc.bootcatchup=1`, **the parallel block download runs inside the boot
+phase**, and `serve_start_rpc()` is only reached after it (`asm/daemon/main.c:11857`, after
+`[boot] boot phase complete`). On an empty mainnet datadir that means no cookie, no RPC port
+and no monitoring for the whole of a first sync — eighteen hours and more of a node that is
+demonstrably working and looks unreachable. The node announces it at boot, in as many words:
+
+```
+[boot] boot catch-up runs BEFORE the UTXO engine starts: its blocks are connected by the
+       worker afterwards (bmc.bootcatchup=0 leaves the download to the worker, which
+       connects while it downloads)
+```
+
+Measured both ways on the same empty mainnet datadir:
+
+| `bmc.bootcatchup` | boot phase | RPC live | what the monitor shows |
+|---|---|---|---|
+| `1` (bmc's default) | runs the whole download | not until the sync ends | node unreachable, for hours |
+| **`0` (this package)** | **0.07 s** | **immediately** | **online from the first poll** |
+
+So the package ships `BMC_BOOT_CATCHUP=0`. A gap of 2,000 blocks or more still triggers the
+parallel downloader later; what changes is that it no longer runs before anything can watch it.
+
+**The timing caveat, and it has two halves.** Every published sync figure for bmc — 18 h 29 m,
+runs 27 to 29, the comparisons against `core31` — was measured with bmc's default AND with
+nothing polling the node. This package inverts both. A sync run as shipped is therefore **not
+comparable** to those numbers, for two independent reasons:
+
+- `bootcatchup=0` changes the download strategy, not just when RPC binds. Whether it is faster,
+  slower or identical is **unmeasured**; nobody has run a timed pair.
+- the monitor polls throughout, which is the contamination the benchmark rule exists to prevent.
+
+**To produce a comparable number:** set `BMC_BOOT_CATCHUP=1` *and* `docker compose stop
+blockyard`. Both, not either. That is in the README and in `.env.example`, beside the setting
+itself, because a figure quoted from a watched sync would be wrong in a way nobody could see
+from the number alone.
 
 **The honest gap: nobody has measured what polling a CURRENT bmc build costs during a sync.**
 The 10.2 TB figure is from a build five deploys old; whether that read amplification is gone,
