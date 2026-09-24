@@ -118,15 +118,24 @@ services:
       # reads everything otherwise.
       BLOCKYARD_AUTH: ${BLOCKYARD_AUTH:-1}
       BLOCKYARD_ADMIN_PASSWORD: ${BLOCKYARD_ADMIN_PASSWORD:-}
-      # HTTP inside the compose network; put a reverse proxy in front for TLS, or set this to
-      # 1 and BlockYard makes its own certificate.
-      BLOCKYARD_TLS: ${BLOCKYARD_TLS:-0}
+      # HTTPS, which is BlockYard's own default since 2026-09-15 ("make https the forced
+      # default") -- it makes a self-signed certificate on first start, under the monitor's
+      # data volume so it survives restarts. Expect a browser warning the first time.
+      #
+      # 0 IS ONLY CORRECT BEHIND A PROXY THAT TERMINATES TLS. This shipped as 0 for its first
+      # day, copied from BlockYard's Umbrel package -- where it is right, because Umbrel's
+      # app_proxy does the terminating. Nothing terminates anything here: this compose file
+      # publishes the port straight to the host, so 0 meant plaintext on the LAN, which is the
+      # posture BlockYard deliberately moved away from.
+      BLOCKYARD_TLS: ${BLOCKYARD_TLS:-1}
       # ON, and this is the one deployment where that is right: the parsers were written
       # against bmc's log grammar. The Core image ships this off because against a Core
       # debug.log every line falls through unstructured and misdated.
       BLOCKYARD_LOG_SOURCE: "1"
     healthcheck:
-      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:21000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      # Scheme follows BLOCKYARD_TLS, and a self-signed certificate is expected rather than
+      # trusted: without both, turning TLS on turns the container permanently unhealthy.
+      test: ["CMD-SHELL", "node -e \"process.env.NODE_TLS_REJECT_UNAUTHORIZED='0';const s=process.env.BLOCKYARD_TLS==='0'?'http':'https';fetch(s+'://127.0.0.1:21000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
       interval: 30s
       timeout: 5s
       start_period: 30s

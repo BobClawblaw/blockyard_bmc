@@ -27,6 +27,7 @@ bad()  { printf '  \033[31mFAIL\033[0m %s\n' "$1"; exit 1; }
 note() { printf '\n== %s ==\n' "$1"; }
 
 cleanup() {
+  $DOCKER rm -f "$PROJECT-tls" >/dev/null 2>&1 || true
   $DOCKER rm -f "$NODE" "$MON" >/dev/null 2>&1 || true
   $DOCKER volume rm -f "$PROJECT-data" >/dev/null 2>&1 || true
   $DOCKER network rm "$NET" >/dev/null 2>&1 || true
@@ -164,6 +165,36 @@ EOF
 done
 [ "${lines:-0}" -gt 0 ] || bad "the follower read no lines from /bmc/regtest/debug.log in 60 s -- the log source is not working"
 ok "the log follower is reading the node's debug.log ($lines lines, parse ratio $ratio)"
+
+note "TLS, which is the shipped default"
+# The monitor above runs with BLOCKYARD_TLS=0 so the rest of this script can speak plain HTTP.
+# The DEFAULT is 1, and it shipped as 0 for one day by mistake -- copied from BlockYard's Umbrel
+# package, where a proxy terminates TLS, into a compose file where nothing does. So the default
+# path gets its own container here, and so does the healthcheck command, which fails closed: a
+# scheme mismatch or an untrusted self-signed certificate would leave a container that serves
+# perfectly well marked unhealthy for ever.
+TLSC="$PROJECT-tls"
+$DOCKER rm -f "$TLSC" >/dev/null 2>&1 || true
+$DOCKER run -d --name "$TLSC" --network "$NET" --user 1000:1000 \
+  -v "$PROJECT-data:/bmc:ro" -p "127.0.0.1:$((PORT+1)):21000" \
+  -e BMC_CHAIN=regtest -e BMC_RPC_HOST=bmc -e BLOCKYARD_BIND=0.0.0.0 -e BLOCKYARD_PORT=21000 \
+  -e BLOCKYARD_AUTH=0 -e BLOCKYARD_CONFIG=/data/blockyard/local.json -e BLOCKYARD_DATA=/data/blockyard/state \
+  --entrypoint /app/entrypoint/blockyard.sh "$IMAGE" >/dev/null   # no BLOCKYARD_TLS: the default
+for i in $(seq 1 45); do
+  curl -ks "https://127.0.0.1:$((PORT+1))/api/health" >/dev/null 2>&1 && break
+  sleep 1
+done
+curl -ks "https://127.0.0.1:$((PORT+1))/api/health" >/dev/null 2>&1 \
+  || bad "with BLOCKYARD_TLS unset the monitor does not serve HTTPS: $($DOCKER logs --tail 5 "$TLSC" 2>&1 | tr '\n' ' ')"
+ok "unset BLOCKYARD_TLS serves HTTPS, not plaintext"
+curl -s "http://127.0.0.1:$((PORT+1))/api/health" >/dev/null 2>&1 \
+  && bad "it answers plain HTTP on the same port too" || ok "and refuses plain HTTP on that port"
+# The healthcheck command itself, run exactly as the compose file defines it.
+$DOCKER exec -e BLOCKYARD_TLS= "$TLSC" node -e \
+  "process.env.NODE_TLS_REJECT_UNAUTHORIZED='0';const s=process.env.BLOCKYARD_TLS==='0'?'http':'https';fetch(s+'://127.0.0.1:21000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))" \
+  || bad "the healthcheck command fails against a TLS monitor -- the container would read unhealthy for ever"
+ok "the healthcheck command follows the scheme and accepts the self-signed certificate"
+$DOCKER rm -f "$TLSC" >/dev/null 2>&1
 
 note "shutdown"
 $DOCKER stop -t 30 "$NODE" >/dev/null

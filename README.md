@@ -42,7 +42,7 @@ sudo docker compose up -d
 sudo docker compose logs -f bmc   # the node's own log, as it boots and starts syncing
 ```
 
-Then open `http://<host>:21000`. The first admin password is whatever you set as
+Then open `https://<host>:21000` — HTTPS with a certificate the server makes itself, so expect a browser warning the first time for that address. The first admin password is whatever you set as
 `BLOCKYARD_ADMIN_PASSWORD`, or, if you left it empty, a generated one printed once in the
 monitor's log:
 

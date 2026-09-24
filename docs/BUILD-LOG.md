@@ -20,7 +20,7 @@ What occupies the unique part:
 | `/app/docs` (BlockYard's documentation, as its own image ships it) | 22 MB |
 | `/app/public` + `/app/server` | 3.5 MB |
 
-## Five things that were wrong, and how each announced itself
+## Six things that were wrong, and how each announced itself
 
 These are in the order they were hit. Each one is now a comment at the place it bit, because
 each would otherwise be rediscovered by whoever changes that line next.
@@ -119,6 +119,30 @@ Same empty datadir, `bmc.bootcatchup=0`:
 **0.07 seconds, against never-until-finished.** The package ships `BMC_BOOT_CATCHUP=0`; the
 timing caveat that comes with it is in `docs/DESIGN.md`.
 
+### 6. It shipped plaintext, because a line was copied without its precondition
+
+Found by the operator trying to reach it: *"We are supposed to serve blockyard on https. What
+happened."*
+
+`BLOCKYARD_TLS: ${BLOCKYARD_TLS:-0}`, copied from BlockYard's own Umbrel compose file. There
+the 0 is right, and its comment says why: *"app_proxy speaks HTTP to the app and terminates TLS
+itself, so this must be 0."* **Nothing terminates anything in this compose file** -- it
+publishes the port straight to the host -- so the same line meant the monitor served plaintext
+on the LAN. BlockYard's own default is `tls.enabled: true`, set deliberately on 2026-09-15
+("make https the forced default"), with `BLOCKYARD_TLS=0` documented as the way to plain HTTP
+*"for a reverse proxy that terminates TLS in front"*.
+
+The precondition was in the comment I copied. I took the value and left the reason behind.
+
+Now `${BLOCKYARD_TLS:-1}`, and the healthcheck had to change with it: it hardcoded
+`http://` and would have left a perfectly healthy container permanently unhealthy. It follows
+the scheme and expects a self-signed certificate. The certificate lives on the monitor's data
+volume, so the browser warning is once per address, not once per restart.
+
+Three smoke checks now cover it, because the failure mode is silent in both directions: a
+monitor serving plaintext looks fine until someone reads the URL bar, and a broken healthcheck
+looks fine until something acts on it.
+
 ## What the first mainnet sync showed
 
 Started 2026-09-24 02:06 on `/mnt/nvme8tb`, `dbcache=8192`, 48 connections, ports moved clear
@@ -140,7 +164,7 @@ figure was measured.
 
 ## What the smoke test proves
 
-`scripts/smoke.sh`, on regtest, 17 checks, all passing 2026-09-24:
+`scripts/smoke.sh`, on regtest, 22 checks, all passing 2026-09-24:
 
 ```
 == the image ==
