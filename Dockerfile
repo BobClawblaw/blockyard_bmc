@@ -45,7 +45,7 @@ ARG BMC_REPO=https://github.com/BobClawblaw/bitcoinmachinecode.git
 # A FULL 40-character commit sha, a branch or a tag -- never an abbreviated sha. `git fetch`
 # resolves a ref name or a whole object id; a short sha is neither, and the build fails with
 # "couldn't find remote ref", which is how this line came to say so.
-ARG BMC_REF=bc0b9007d8b8c024ab411fff731beecd3035b08c
+ARG BMC_REF=24269f6663bf814062fc3e3947b1d1fdb01f4145
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
       nasm gcc make python3 binutils libc6-dev git ca-certificates \

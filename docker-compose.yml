@@ -17,7 +17,7 @@ services:
     build: &build
       context: .
       args:
-        BMC_REF: ${BMC_REF:-bc0b9007d8b8c024ab411fff731beecd3035b08c}
+        BMC_REF: ${BMC_REF:-24269f6663bf814062fc3e3947b1d1fdb01f4145}
         BLOCKYARD_REF: ${BLOCKYARD_REF:-f66cf246554fe85edc94da6bd258dc57e30a9943}
     image: ${IMAGE:-blockyard-bmc:dev}
     container_name: blockyard-bmc-node
