@@ -79,7 +79,7 @@ RUN make -j"$(nproc)" \
 FROM debian:trixie-slim AS blockyard-src
 
 ARG BLOCKYARD_REPO=https://github.com/BobClawblaw/blockyard.git
-ARG BLOCKYARD_REF=1b4ce2b64cf817c3eb4fb6c68675fc6ad77eb198
+ARG BLOCKYARD_REF=51491e985b7e49df0ccefb8fab9782a8bbf4bef9
 # 1 keeps the DOS Diversions (~26 MB of shareware whose terms permit redistributing the whole
 # package, exactly as BlockYard's own image ships it); 0 drops them and the pages say which
 # file is missing.
