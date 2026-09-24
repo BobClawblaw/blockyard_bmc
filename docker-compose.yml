@@ -1,0 +1,135 @@
+# A Bitcoin Machine Code node and the BlockYard monitor, wired together.
+#
+#   cp .env.example .env     # then read it: the disk figure is not a typo
+#   sudo docker compose up -d
+#   sudo docker compose logs -f bmc
+#
+# ONE IMAGE, TWO SERVICES. Both `build:` blocks name the same image, so it is built once and
+# the second service reuses it; each container keeps its own entrypoint, restart policy,
+# health check and stop timeout. See docs/DESIGN.md for why this rather than one container
+# with a supervisor, or two separately published images.
+
+name: blockyard-bmc
+
+services:
+  # ------------------------------------------------------------------ the node
+  bmc:
+    build: &build
+      context: .
+      args:
+        BMC_REF: ${BMC_REF:-fbb22e2303544eba955b6eb33c65b8fa6a8122b4}
+        BLOCKYARD_REF: ${BLOCKYARD_REF:-6a8263bcf7517632ae811344d16739daf33238bd}
+    image: ${IMAGE:-blockyard-bmc:dev}
+    container_name: blockyard-bmc-node
+    entrypoint: /app/entrypoint/bmc.sh
+    # linux/amd64 only, and stated rather than discovered: bmc is hand-written NASM ELF64 and
+    # there is no arm64 build. On an arm64 host this fails at `docker build`, which is the
+    # honest place for it to fail.
+    platform: linux/amd64
+    restart: unless-stopped
+    user: "1000:1000"
+    # A chain-scale UTXO flush on shutdown. Killing it early is what costs a long recovery on
+    # the next boot, so Docker is told to wait: bmc's own suggested unit uses TimeoutStopSec=300.
+    stop_grace_period: 300s
+    volumes:
+      - bmc-data:/data/bmc
+    ports:
+      # P2P, published so the node can take inbound peers. Drop this line to run it
+      # outbound-only; nothing else needs it.
+      - "${BMC_P2P_PORT:-8333}:8333"
+    environment:
+      BMC_CHAIN: ${BMC_CHAIN:-main}
+      BMC_DATADIR: /data/bmc
+      BMC_P2P_PORT: "8333"
+      BMC_RPC_PORT: "8332"
+      BMC_RPC_BIND: "0.0.0.0"
+      # EXACT, because the subnet below is fixed. bmc ignores rpcbind unless at least one
+      # rpcallowip is given, so this pair is what makes the RPC reachable from the monitor --
+      # and nothing wider than this compose network is allowed near it.
+      BMC_RPC_ALLOW_IP: ${SUBNET:-172.31.7.0/24}
+      BMC_DBCACHE: ${BMC_DBCACHE:-1024}
+      BMC_MAXCONNECTIONS: ${BMC_MAXCONNECTIONS:-48}
+      BMC_ADDRINDEX: ${BMC_ADDRINDEX:-1}
+      BMC_TXINDEX: ${BMC_TXINDEX:-1}
+      BMC_COINSTATSINDEX: ${BMC_COINSTATSINDEX:-1}
+      BMC_BLOCKFILTERINDEX: ${BMC_BLOCKFILTERINDEX:-0}
+      BMC_EXTRA_CONF: ${BMC_EXTRA_CONF:-}
+    healthcheck:
+      # The cookie appears when the RPC listener is bound, which is the first moment anything
+      # can talk to this node. A boot takes a couple of minutes (archive reload, UTXO load), so
+      # the start period is generous and a slow boot is not a restart loop.
+      test: ["CMD-SHELL", "test -f /data/bmc/${BMC_CHAIN:-main}/.cookie"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10m
+      retries: 3
+    networks:
+      app: {}
+
+  # --------------------------------------------------------------- the monitor
+  blockyard:
+    build: *build
+    image: ${IMAGE:-blockyard-bmc:dev}
+    container_name: blockyard-bmc-monitor
+    entrypoint: /app/entrypoint/blockyard.sh
+    platform: linux/amd64
+    restart: unless-stopped
+    # The SAME uid as the node, because this container reads the node's RPC cookie and bmc
+    # writes that file mode 0600, always.
+    user: "1000:1000"
+    depends_on:
+      # Ordering only, deliberately not `condition: service_healthy`: the node's config marks
+      # it `optional`, so the monitor comes up beside a node that is still booting and SHOWS
+      # that, which is most of the value during a sync that takes days.
+      - bmc
+    volumes:
+      - blockyard-data:/data/blockyard
+      # Read-only: the monitor needs the cookie and the node's log, and has no business
+      # writing anything into a chain datadir.
+      - bmc-data:/bmc:ro
+    ports:
+      - "${BLOCKYARD_PORT:-21000}:21000"
+    environment:
+      BMC_CHAIN: ${BMC_CHAIN:-main}
+      BMC_RPC_HOST: bmc
+      BMC_RPC_PORT: "8332"
+      BLOCKYARD_BIND: "0.0.0.0"
+      BLOCKYARD_PORT: "21000"
+      BLOCKYARD_CONFIG: /data/blockyard/local.json
+      BLOCKYARD_DATA: /data/blockyard/state
+      # Sign-in on, with the first admin password from .env. Anyone who can reach the port
+      # reads everything otherwise.
+      BLOCKYARD_AUTH: ${BLOCKYARD_AUTH:-1}
+      BLOCKYARD_ADMIN_PASSWORD: ${BLOCKYARD_ADMIN_PASSWORD:-}
+      # HTTP inside the compose network; put a reverse proxy in front for TLS, or set this to
+      # 1 and BlockYard makes its own certificate.
+      BLOCKYARD_TLS: ${BLOCKYARD_TLS:-0}
+      # ON, and this is the one deployment where that is right: the parsers were written
+      # against bmc's log grammar. The Core image ships this off because against a Core
+      # debug.log every line falls through unstructured and misdated.
+      BLOCKYARD_LOG_SOURCE: "1"
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:21000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+    networks:
+      app: {}
+
+networks:
+  app:
+    # The subnet is FIXED so that the node's rpcallowip can name it exactly. Left to Docker it
+    # would be whatever is free that day, and the only way to write a working rpcallowip would
+    # be a wide 172.16.0.0/12 that admits every bridge on the host.
+    ipam:
+      config:
+        - subnet: ${SUBNET:-172.31.7.0/24}
+
+volumes:
+  # Named volumes, not bind mounts, so the uid inside the container owns them without anyone
+  # having to chown a directory on the host. Put the chain somewhere specific by replacing
+  # this with a `driver_opts` bind, or by pointing the volume at a mounted disk -- see
+  # docs/DESIGN.md, "What this costs on disk", before choosing where.
+  bmc-data: {}
+  blockyard-data: {}
