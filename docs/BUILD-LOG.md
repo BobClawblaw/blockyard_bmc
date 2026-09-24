@@ -20,7 +20,7 @@ What occupies the unique part:
 | `/app/docs` (BlockYard's documentation, as its own image ships it) | 22 MB |
 | `/app/public` + `/app/server` | 3.5 MB |
 
-## Six things that were wrong, and how each announced itself
+## Seven things that were wrong, and how each announced itself
 
 These are in the order they were hit. Each one is now a comment at the place it bit, because
 each would otherwise be rediscovered by whoever changes that line next.
@@ -143,6 +143,21 @@ Three smoke checks now cover it, because the failure mode is silent in both dire
 monitor serving plaintext looks fine until someone reads the URL bar, and a broken healthcheck
 looks fine until something acts on it.
 
+### 7. A .env cannot hold a newline, so multi-setting BMC_EXTRA_CONF was silently dropped
+
+`.env.example` documents `BMC_EXTRA_CONF="assumevalid=0\nprune=0"` -- which is the only way a
+`.env` file can express two settings, because a `.env` value cannot contain a real newline. It
+arrives as the two characters `\` and `n`. The renderer split on real newlines only, so the
+whole value became one unparseable config line.
+
+**Silent in both directions**, which is what makes it worth a test: the daemon names the bad key
+and carries on with its defaults, so the settings simply do not happen and nothing looks wrong.
+The documented example in this repository would not have worked. Found while setting two
+settings at once during the first mainnet sync.
+
+Now split on `/\\n|\n/`, and pinned by a smoke check that asserts two settings become two
+config lines.
+
 ## What the first mainnet sync showed
 
 Started 2026-09-24 02:06 on `/mnt/nvme8tb`, `dbcache=8192`, 48 connections, ports moved clear
@@ -164,7 +179,7 @@ figure was measured.
 
 ## What the smoke test proves
 
-`scripts/smoke.sh`, on regtest, 22 checks, all passing 2026-09-24:
+`scripts/smoke.sh`, on regtest, 23 checks, all passing 2026-09-24:
 
 ```
 == the image ==

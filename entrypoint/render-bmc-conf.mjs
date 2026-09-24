@@ -98,8 +98,15 @@ export function renderConf(env = process.env) {
   if (env.BMC_EXTRA_CONF) {
     // Verbatim, and BEFORE the section header so it lands in the global scope. A
     // network-specific setting passed this way has to carry its own [section].
+    //
+    // SPLIT ON A LITERAL BACKSLASH-n AS WELL AS A REAL NEWLINE. A .env file cannot carry a
+    // real newline inside a value, so `BMC_EXTRA_CONF=a=1\nb=2` -- which is how .env.example
+    // documents it, and the only way anyone can write it there -- arrives as the two
+    // characters `\` and `n`. Splitting on real newlines alone turned the whole thing into one
+    // unparseable line, silently: the daemon logs the bad key and carries on with its default,
+    // so the setting simply does not happen. Found 2026-09-24 while setting two of them.
     lines.push('# BMC_EXTRA_CONF, verbatim');
-    lines.push(...env.BMC_EXTRA_CONF.split('\n').map((s) => s.trim()).filter(Boolean));
+    lines.push(...env.BMC_EXTRA_CONF.split(/\\n|\n/).map((s) => s.trim()).filter(Boolean));
     lines.push('');
   }
 

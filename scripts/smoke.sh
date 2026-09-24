@@ -95,6 +95,19 @@ $DOCKER run --rm -e BMC_CHAIN=main -e BMC_RPC_ALLOW_IP=10.0.0.0/8 -e BMC_BOOT_CA
   | grep -q '^bmc.bootcatchup=1' || bad "BMC_BOOT_CATCHUP=1 should restore bmc's default for a timed run"
 ok "BMC_BOOT_CATCHUP=1 restores bmc's default, for a timed run"
 
+# BMC_EXTRA_CONF, written the only way a .env file can write it. A .env value cannot contain a
+# real newline, so a multi-setting BMC_EXTRA_CONF arrives as the two characters `\` and `n` --
+# and splitting on real newlines alone collapsed it into one unparseable line. That failure is
+# SILENT: the daemon names the bad key, carries on with its defaults, and the setting simply
+# does not happen. Pinned here because nothing else would notice.
+multi=$($DOCKER run --rm -e BMC_CHAIN=main -e BMC_RPC_ALLOW_IP=10.0.0.0/8 \
+  -e 'BMC_EXTRA_CONF=bmc.utxobulkgapblocks=500\nbmc.utxocompactthreshold=9' \
+  --entrypoint node "$IMAGE" -e "import('/app/entrypoint/render-bmc-conf.mjs').then(m=>process.stdout.write(m.renderConf(process.env)))")
+echo "$multi" | grep -qx 'bmc.utxobulkgapblocks=500' \
+  && echo "$multi" | grep -qx 'bmc.utxocompactthreshold=9' \
+  || bad "BMC_EXTRA_CONF with a literal \\n did not become two config lines -- the settings would be silently dropped"
+ok "BMC_EXTRA_CONF splits on a literal \\n, as a .env file has to write it"
+
 $DOCKER exec "$NODE" bmc_cli -datadir=/data/bmc -regtest getblockchaininfo >/dev/null 2>&1 \
   || bad "the node's own RPC did not answer: $($DOCKER exec "$NODE" bmc_cli -datadir=/data/bmc -regtest getblockchaininfo 2>&1 | head -2)"
 ok "answers RPC on the loopback inside its container"
