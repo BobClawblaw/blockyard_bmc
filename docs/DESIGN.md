@@ -195,19 +195,30 @@ Measured both ways on the same empty mainnet datadir:
 So the package ships `BMC_BOOT_CATCHUP=0`. A gap of 2,000 blocks or more still triggers the
 parallel downloader later; what changes is that it no longer runs before anything can watch it.
 
-**The timing caveat, and it has two halves.** Every published sync figure for bmc — 18 h 29 m,
-runs 27 to 29, the comparisons against `core31` — was measured with bmc's default AND with
-nothing polling the node. This package inverts both. A sync run as shipped is therefore **not
-comparable** to those numbers, for two independent reasons:
+**CORRECTED 2026-09-24, and the correction matters.** This section first said that every
+published bmc figure was measured with bmc's default, so a sync run by this package was not
+comparable to them. That was wrong, and the evidence was already on disk:
+`validation/fresh_ibd_run.sh` writes `bmc.bootcatchup=0` into the config it generates, and the
+captured `bitcoin.conf` of runs 27, 28 and 29 each carry it.
 
-- `bootcatchup=0` changes the download strategy, not just when RPC binds. Whether it is faster,
-  slower or identical is **unmeasured**; nobody has run a timed pair.
-- the monitor polls throughout, which is the contamination the benchmark rule exists to prevent.
+| run | `bmc.bootcatchup` | result | elapsed |
+|---|---|---|---|
+| 27 | `0` | `PASS 967712` | 18 h 40 m |
+| 28 | `0` | `PASS 968025` | 18 h 24 m |
+| 29 | `0` | `PASS 968154` | 18 h 29 m |
 
-**To produce a comparable number:** set `BMC_BOOT_CATCHUP=1` *and* `docker compose stop
-blockyard`. Both, not either. That is in the README and in `.env.example`, beside the setting
-itself, because a figure quoted from a watched sync would be wrong in a way nobody could see
-from the number alone.
+So `bootcatchup=0` — what this package ships — is the setting that produced all three headline
+timings and all three UTXO sets MuHash-identical to Core's. It is the **best-tested path this
+node has at mainnet scale**, not a deviation from one. bmc changed its own default to 0 the same
+day, for that reason (bitcoinmachinecode#293).
+
+**The timing caveat that remains is one half, not two.** The monitor polls the node throughout,
+which is the contamination the benchmark rule exists to prevent — so a sync watched by this
+package is still not a clean stopwatch. To produce a comparable number, `docker compose stop
+blockyard` and leave the node unpolled. The `bootcatchup` half of the old caveat is withdrawn:
+there is no measured performance difference to weigh, and what is genuinely unmeasured is the
+reverse — whether `bootcatchup=1` is faster, slower or identical, which no published mainnet run
+has ever established.
 
 **The honest gap: nobody has measured what polling a CURRENT bmc build costs during a sync.**
 The 10.2 TB figure is from a build five deploys old; whether that read amplification is gone,

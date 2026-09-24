@@ -81,16 +81,17 @@ the RPC server starts only after it, so on a fresh mainnet datadir nothing answe
 the entire sync has finished. Measured 2026-09-24 — boot phase `0.07 s` and chain RPCs live
 immediately with it off, against hours of an unreachable-looking node with it on.
 
-**If you are timing a sync rather than watching one, change both of these:**
+**If you are timing a sync rather than watching one, stop the monitor:**
 
 ```sh
-BMC_BOOT_CATCHUP=1                      # in .env -- bmc's own default
-sudo docker compose stop blockyard      # and leave the node entirely unpolled
+sudo docker compose stop blockyard      # the node runs entirely unpolled
+sudo docker compose start blockyard     # ...and watch again when it is done
 ```
 
-Both, not either. Every published sync figure for bmc was measured that way, and this package
-inverts both — so a sync run as shipped is not comparable to them. A polled node is a fine node
-and a poor stopwatch. `docs/DESIGN.md`, "Watching the sync", has the measured reasons.
+A polled node is a fine node and a poor stopwatch. You do **not** need to change
+`BMC_BOOT_CATCHUP` for a comparable run: `bootcatchup=0` is what every published bmc benchmark
+already used (runs 27, 28 and 29, all MuHash-identical to Core), and bmc made it the default on
+2026-09-24. `docs/DESIGN.md`, "Watching the sync", has the measurements.
 
 ### Useful commands
 
