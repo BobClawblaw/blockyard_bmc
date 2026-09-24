@@ -95,6 +95,17 @@ $DOCKER run --rm -e BMC_CHAIN=main -e BMC_RPC_ALLOW_IP=10.0.0.0/8 -e BMC_BOOT_CA
   | grep -q '^bmc.bootcatchup=1' || bad "BMC_BOOT_CATCHUP=1 should restore bmc's default for a timed run"
 ok "BMC_BOOT_CATCHUP=1 restores bmc's default, for a timed run"
 
+# The other setting a mid-sync restart depends on. Regtest cannot show its effect either -- it
+# needs a bulk-shaped LSM store to matter -- so what is pinned is that the package ships it low
+# and that bmc's own default can be restored. bitcoinmachinecode#294.
+$DOCKER exec "$NODE" grep -qx 'bmc.utxobulkgapblocks=500' /data/bmc/bitcoin.conf \
+  || bad "bmc.utxobulkgapblocks is not 500: a restart mid-sync would take the steady-state memtable and wedge"
+ok "bmc.utxobulkgapblocks=500 is shipped, so a restart mid-sync takes the bulk memtable"
+$DOCKER run --rm -e BMC_CHAIN=main -e BMC_RPC_ALLOW_IP=10.0.0.0/8 -e BMC_UTXO_BULK_GAP=50000 \
+  --entrypoint node "$IMAGE" -e "import('/app/entrypoint/render-bmc-conf.mjs').then(m=>process.stdout.write(m.renderConf(process.env)))" \
+  | grep -qx 'bmc.utxobulkgapblocks=50000' || bad "BMC_UTXO_BULK_GAP should restore bmc's own default"
+ok "BMC_UTXO_BULK_GAP restores bmc's own default when asked"
+
 # BMC_EXTRA_CONF, written the only way a .env file can write it. A .env value cannot contain a
 # real newline, so a multi-setting BMC_EXTRA_CONF arrives as the two characters `\` and `n` --
 # and splitting on real newlines alone collapsed it into one unparseable line. That failure is

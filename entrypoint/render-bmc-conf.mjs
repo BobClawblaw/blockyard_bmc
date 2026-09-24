@@ -85,6 +85,31 @@ export function renderConf(env = process.env) {
   set('bmc.bootcatchup', bool(env.BMC_BOOT_CATCHUP, false) ? 1 : 0);
   lines.push('');
 
+  // A RESTART MID-SYNC MUST NOT WEDGE THE NODE (bitcoinmachinecode#294, hit here 2026-09-24).
+  //
+  // bmc sizes its UTXO memtable from the block gap at boot: below bmc.utxobulkgapblocks
+  // (default 50,000) it takes the steady-state table, 2^16 slots and a 64 MB blob. Restart a
+  // node part-way through a sync and the gap is small -- mine was 3,345 -- but the LSM store is
+  // still bulk-shaped, 17 runs and 42 GB here, so every lookup probes up to 17 runs through a
+  // 64 MB cache. Measured: ~100% CPU, ZERO blocks applied in 25 minutes, no peers (the worker
+  // closes the gap before it dials), and no log line after the sizing decision. It reads as a
+  // hang, and it does not recover by itself.
+  //
+  // 500 is low enough that any restart during a sync takes the bulk table, and high enough
+  // that a node following the tip does not: 500 blocks is about three and a half days, so
+  // ordinary tip operation stays on the small table where it belongs. With it set, the same
+  // datadir loaded its UTXO state in 162 s and resumed at 11 blk/s.
+  //
+  // bmc's own code argues for erring this way -- "bulk sizing costs address space, not resident
+  // memory, so over-selecting it is cheap and under-selecting it is what wedges a restart".
+  //
+  // This is a WORKAROUND for a sizing heuristic that consults the block gap and the WAL but not
+  // the store's run count. If #294 lands a run-count trigger, this becomes redundant rather
+  // than wrong, and can go back to bmc's default by setting BMC_UTXO_BULK_GAP=50000.
+  lines.push('# a restart mid-sync takes the bulk memtable, not the steady-state one (#294)');
+  set('bmc.utxobulkgapblocks', num(env.BMC_UTXO_BULK_GAP, 500));
+  lines.push('');
+
   // The indexes, which are most of the disk. addrindex is the one that changes what the
   // MONITOR has to do: with it on, the node serves address history and BlockYard does not
   // build and follow a second copy of it (~124 GB and half an hour on a fast machine).

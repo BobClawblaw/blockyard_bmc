@@ -52,6 +52,10 @@ services:
       # 0 (the package default) puts the RPC server up BEFORE the block download, so the
       # sync can be watched. 1 restores bmc's own default and is what a TIMED run wants.
       BMC_BOOT_CATCHUP: ${BMC_BOOT_CATCHUP:-0}
+      # A restart mid-sync takes the bulk UTXO memtable rather than the steady-state one.
+      # bmc's default (50000) wedges such a restart: see bitcoinmachinecode#294 and
+      # .env.example. 50000 puts it back.
+      BMC_UTXO_BULK_GAP: ${BMC_UTXO_BULK_GAP:-500}
       BMC_ADDRINDEX: ${BMC_ADDRINDEX:-1}
       BMC_TXINDEX: ${BMC_TXINDEX:-1}
       BMC_COINSTATSINDEX: ${BMC_COINSTATSINDEX:-1}

@@ -179,7 +179,7 @@ figure was measured.
 
 ## What the smoke test proves
 
-`scripts/smoke.sh`, on regtest, 23 checks, all passing 2026-09-24:
+`scripts/smoke.sh`, on regtest, 25 checks, all passing 2026-09-24:
 
 ```
 == the image ==

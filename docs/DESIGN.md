@@ -228,6 +228,38 @@ read the node's own I/O counters (`/proc/<pid>/io`, `read_bytes`) with the monit
 again a minute after stopping it. If the difference is large, say so — it is a bmc finding, not
 a packaging one, and it would be worth a `BMC_EXTRA_CONF` or a gentler poll cadence here.
 
+### And the setting that keeps a restart from wedging it
+
+`bmc.utxobulkgapblocks=500`, against bmc's default of 50,000. Same shape of problem as the one
+above, found the same day and the hard way (bitcoinmachinecode#294).
+
+bmc sizes its UTXO memtable from the block gap at boot. Restart a node part-way through a sync
+and the gap is small -- 3,345 here -- while the LSM store is still bulk-shaped: **17 runs, 42
+GB**. Every lookup then probes up to 17 runs through a 64 MB cache. Measured on this package's
+first mainnet sync, at 92%:
+
+| | gap-sized (bmc default) | with `bmc.utxobulkgapblocks=500` |
+|---|---|---|
+| memtable | 2^16 slots, 64 MB blob | 2^25 slots, 6144 MB blob |
+| UTXO state load | **did not finish in 25 minutes** | **162 s** |
+| blocks applied | **0 in 25 minutes**, ~100% CPU | resumed at 11 blk/s |
+| peers | 0 (the worker dials only after closing the gap) | 5 |
+| log output | **none at all after the sizing line** | normal progress |
+
+It reads as a hang. Nothing says otherwise, which is the worst part and is its own point in the
+issue.
+
+500 is low enough that any restart during a sync takes the bulk table and high enough that a
+node following the tip does not — 500 blocks is about three and a half days, so ordinary tip
+operation keeps the small table. bmc's own code argues for erring this way: *"bulk sizing costs
+address space, not resident memory, so over-selecting it is cheap and under-selecting it is what
+wedges a restart."*
+
+**A workaround, not a fix.** The heuristic consults the block gap and the WAL tail but not the
+store's run count, which is the thing that actually made lookups expensive. If #294 lands a
+run-count trigger this setting becomes redundant rather than wrong, and `BMC_UTXO_BULK_GAP=50000`
+restores bmc's default.
+
 ## What this costs on disk
 
 Measured on the production node, 2026-09-24, mainnet with the shipped index set:
