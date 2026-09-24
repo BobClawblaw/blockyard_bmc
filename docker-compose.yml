@@ -87,12 +87,26 @@ services:
       # Read-only: the monitor needs the cookie and the node's log, and has no business
       # writing anything into a chain datadir.
       - bmc-data:/bmc:ro
+      # Core's datadir is NOT mounted here. Compose has no conditional bind, and the common
+      # A/B case (a Core on the host or the LAN, reached with rpcuser/rpcpassword) needs no
+      # mount at all. To use Core's cookie instead, add docker-compose.core.yml:
+      #   docker compose -f docker-compose.yml -f docker-compose.core.yml up -d
     ports:
       - "${BLOCKYARD_PORT:-21000}:21000"
     environment:
       BMC_CHAIN: ${BMC_CHAIN:-main}
       BMC_RPC_HOST: bmc
       BMC_RPC_PORT: "8332"
+      # A/B AGAINST A CORE YOU ALREADY RUN (operator, 2026-09-24: "I want people to be able to
+      # A/B this against Core mainnet if they want to"). Leave CORE_RPC_URL empty and the
+      # monitor watches bmc alone; set it and both appear in the same picker, on the same
+      # charts. Nothing is started for you -- this points at an existing node. See .env.example.
+      CORE_RPC_URL: ${CORE_RPC_URL:-}
+      CORE_RPC_USER: ${CORE_RPC_USER:-}
+      CORE_RPC_PASSWORD: ${CORE_RPC_PASSWORD:-}
+      CORE_COOKIE_FILE: ${CORE_COOKIE_FILE:-}
+      CORE_DATADIR: ${CORE_DATADIR:-}
+      CORE_LABEL: ${CORE_LABEL:-}
       BLOCKYARD_BIND: "0.0.0.0"
       BLOCKYARD_PORT: "21000"
       BLOCKYARD_CONFIG: /data/blockyard/local.json

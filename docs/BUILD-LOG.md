@@ -87,13 +87,16 @@ section if it is network-specific.
 
 ## What the smoke test proves
 
-`scripts/smoke.sh`, on regtest, 14 checks, all passing 2026-09-24:
+`scripts/smoke.sh`, on regtest, 17 checks, all passing 2026-09-24:
 
 ```
 == the image ==
   ok   blockyard-bmc:dev exists (110 MB)
   ok   the administrative suite is absent
   ok   the daemon and all five index helpers are present, beside each other
+  ok   without CORE_RPC_URL the monitor watches bmc alone
+  ok   CORE_RPC_URL adds a Core node beside bmc, for A/B on the same page
+  ok   a Core node with no credential is refused at start-up, not left unauthenticated
 == the node ==
   ok   started
   ok   wrote its RPC cookie (the config rendered, and the RPC listener bound)

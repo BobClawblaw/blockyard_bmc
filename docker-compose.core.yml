@@ -1,0 +1,27 @@
+# A/B against a Bitcoin Core you already run, authenticated by ITS COOKIE FILE.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.core.yml up -d
+#
+# Only needed for the cookie case, which requires Core's datadir to be readable inside the
+# monitor's container. A Core reached with rpcuser/rpcpassword -- including one on another
+# machine -- needs nothing from this file: set CORE_RPC_URL, CORE_RPC_USER and
+# CORE_RPC_PASSWORD in .env and use the ordinary compose file.
+#
+# In .env:
+#   CORE_RPC_URL=http://host.docker.internal:8332   # or a LAN address
+#   CORE_COOKIE_FILE=/core/.cookie                  # where THIS file mounts it, below
+#   CORE_DATADIR_HOST=/var/lib/bitcoind             # Core's datadir ON THE HOST
+#
+# The mount is read-only and the monitor never writes to it. On mainnet Core's cookie is at
+# <datadir>/.cookie; on another chain it is one level down, in that chain's subdirectory, so
+# point CORE_COOKIE_FILE at /core/<chain>/.cookie there.
+#
+# The monitor's container runs as uid 1000. Core's cookie is mode 0600 owned by whatever
+# account runs Core, so that account must be uid 1000 too, or the file must be group-readable
+# by it. If it is neither, use rpcuser/rpcpassword instead -- that path has no such constraint,
+# which is most of why it is the documented default.
+
+services:
+  blockyard:
+    volumes:
+      - ${CORE_DATADIR_HOST:?set CORE_DATADIR_HOST in .env to Core's datadir on the host}:/core:ro

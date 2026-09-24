@@ -60,8 +60,59 @@ export function renderConfig(env = process.env) {
         // refusing to boot beside a node that is still coming up.
         optional: true,
       },
+      ...coreNode(env),
     ],
   };
+}
+
+/**
+ * The A/B node: an EXISTING Bitcoin Core, watched beside bmc in the same monitor.
+ *
+ * Operator, 2026-09-24, on why this package defaults to mainnet: "I want people to be able to
+ * A/B this against Core mainnet if they want to." That comparison needs both nodes on one
+ * page, and BlockYard is already multi-node -- so the only thing missing was a way to name a
+ * Core node from the environment. Unset CORE_RPC_URL and nothing is added.
+ *
+ * It points at a Core somebody ALREADY RUNS rather than shipping one: a second node in this
+ * compose file would double the disk to ~2.4 TB, and packaging Core is not this project's job.
+ *
+ * Three things here are deliberately different from the bmc entry above:
+ *
+ *  - `logFile: null`. BlockYard's parsers do not understand Core's log grammar; pointed at a
+ *    Core debug.log every line falls through unstructured and timestamped at read time. The
+ *    container's BLOCKYARD_LOG_SOURCE=1 is safe because the log source is decided PER NODE by
+ *    whether it has a logFile, and this one does not.
+ *  - no `addressIndex`, ever. Core has no address index of its own, so naming one here would
+ *    start BlockYard building a ~124 GB copy from Core's block files -- which is a reasonable
+ *    thing to want and a very unreasonable thing to start by surprise. Someone who wants it
+ *    can add it to the rendered config's node entry themselves.
+ *  - credentials come from the environment: a cookie file if Core's datadir is mounted into
+ *    this container, otherwise rpcuser/rpcpassword.
+ */
+export function coreNode(env = process.env) {
+  const url = (env.CORE_RPC_URL || '').trim();
+  if (!url) return [];
+  const chain = env.CORE_CHAIN || env.BMC_CHAIN || 'main';
+  const node = {
+    id: 'core',
+    label: env.CORE_LABEL || 'Bitcoin Core',
+    rpcUrl: url,
+    chainHint: chain,
+    // Core's log is never parsed -- see above. Explicit, not omitted, so the intent is legible
+    // in the rendered file.
+    logFile: null,
+    color: '#f7931a',
+    optional: true,
+  };
+  if (env.CORE_COOKIE_FILE) node.cookieFile = env.CORE_COOKIE_FILE;
+  if (env.CORE_DATADIR) node.datadir = env.CORE_DATADIR;
+  if (env.CORE_RPC_USER) node.rpcUser = env.CORE_RPC_USER;
+  if (env.CORE_RPC_PASSWORD) node.rpcPassword = env.CORE_RPC_PASSWORD;
+  if (!node.cookieFile && !node.datadir && !node.rpcUser) {
+    throw new Error('CORE_RPC_URL is set but no credential is: give CORE_COOKIE_FILE (with Core\'s '
+      + 'datadir mounted into this container), or CORE_DATADIR, or CORE_RPC_USER and CORE_RPC_PASSWORD');
+  }
+  return [node];
 }
 
 const invokedDirectly = process.argv[1] && fs.realpathSync(process.argv[1]) === fs.realpathSync(new URL(import.meta.url).pathname);

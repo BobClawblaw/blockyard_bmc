@@ -23,12 +23,13 @@ Umbrel package is the Core pairing, and it has to turn both of those off.
 > something that will not run.
 >
 > **Mainnet needs about 1.2 TB and roughly a day of syncing** on a fast NVMe and a fast CPU;
-> longer, sometimes much longer, on anything else. Start on `signet` or `testnet4` unless you
-> have provisioned for that.
+> longer, sometimes much longer, on anything else. It is the default deliberately — so the
+> claim is checkable against your own Core node — but provision for it, or start on `signet`
+> or `testnet4`, which fit on an ordinary disk.
 >
-> **Not publishable yet.** bmc carries no licence file, so redistributing its binary — which is
-> what pushing this image to a registry does — is not something anyone may do until the
-> operator adds one. Build it locally; do not push it. See [docs/DESIGN.md](docs/DESIGN.md).
+> **Still unpublished, but no longer blocked.** Both projects are Apache-2.0 as of
+> 2026-09-24, so this image may be redistributed. What remains before pushing one is a
+> decision, not a licence: see [docs/DESIGN.md](docs/DESIGN.md).
 
 ---
 
@@ -52,6 +53,37 @@ sudo docker compose logs blockyard | grep -i password
 The node takes a couple of minutes before it answers RPC — it reloads its archive and its UTXO
 set first — and the monitor will show it offline until then. That is expected, and watching it
 come up is most of what this package is for.
+
+## Watch it sync, and A/B it against your own Core
+
+The monitor polls the node throughout its initial sync — watching a chain arrive from genesis
+is most of what this package is for. Point it at a Bitcoin Core you already run and the two sit
+side by side, same page, same charts, same picker:
+
+```sh
+# in .env
+CORE_RPC_URL=http://192.0.2.10:8332     # your Core, on the LAN or this host
+CORE_RPC_USER=...
+CORE_RPC_PASSWORD=...
+```
+
+Nothing is started for you — this points at an existing node, because a second chain here would
+double the disk. If Core's credential is a cookie file rather than a user and password, mount
+its datadir with the override file:
+
+```sh
+sudo docker compose -f docker-compose.yml -f docker-compose.core.yml up -d
+```
+
+**If you are timing a sync rather than watching one, stop the monitor first:**
+
+```sh
+sudo docker compose stop blockyard      # the node runs entirely unpolled
+sudo docker compose start blockyard     # ...and watch again when it is done
+```
+
+A polled node is a fine node and a poor stopwatch. `docs/DESIGN.md`, "Watching the sync", has
+the measured reasons — including the one cost that is known and the one that is not.
 
 ### Useful commands
 
@@ -112,7 +144,10 @@ takes about 12 seconds; the rest is `apt-get` and file copies.
 
 ## Licences
 
-BlockYard is Apache-2.0 (its `LICENSE` and `NOTICE` travel in the image). The DOS Diversions'
-game files are shareware whose terms permit redistributing each package whole, and they travel
-whole; set `--build-arg WITH_GAMES=0` to leave them out. **bmc has no licence file**, which is
-what stops this image being published at all — see [docs/DESIGN.md](docs/DESIGN.md).
+Both projects are **Apache-2.0**: BlockYard's `LICENSE` and `NOTICE` travel in the image, and
+bmc has been Apache-2.0 since 2026-09-24. bmc's own NOTICE is worth reading before running it —
+it states the authorship position and why the warranty disclaimer is the point rather than
+boilerplate.
+
+The DOS Diversions' game files are shareware whose terms permit redistributing each package
+whole, and they travel whole; `--build-arg WITH_GAMES=0` leaves them out.

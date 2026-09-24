@@ -45,6 +45,21 @@ $DOCKER run --rm --entrypoint /bin/sh "$IMAGE" -c \
   || bad "a bmc binary or one of its five helpers is missing"
 ok "the daemon and all five index helpers are present, beside each other"
 
+# The A/B node (CORE_RPC_URL) is off unless asked for, on when asked for, and refuses to be
+# half-configured. Checked here rather than in the running stack because it needs no node: it
+# is entirely a property of what the monitor's entrypoint renders.
+render() { $DOCKER run --rm -e BMC_CHAIN=main "$@" --entrypoint node "$IMAGE" \
+  -e "import('/app/entrypoint/render-blockyard-config.mjs').then(m=>{try{process.stdout.write(m.renderConfig(process.env).nodes.map(n=>n.id).join(','))}catch(e){process.stdout.write('ERR:'+e.message.slice(0,40))}})"; }
+[ "$(render)" = bmc ] || bad "with CORE_RPC_URL unset the monitor should watch bmc alone, got: $(render)"
+ok "without CORE_RPC_URL the monitor watches bmc alone"
+[ "$(render -e CORE_RPC_URL=http://192.0.2.10:8332 -e CORE_RPC_USER=u -e CORE_RPC_PASSWORD=p)" = bmc,core ] \
+  || bad "CORE_RPC_URL with credentials should add a second node"
+ok "CORE_RPC_URL adds a Core node beside bmc, for A/B on the same page"
+case "$(render -e CORE_RPC_URL=http://192.0.2.10:8332)" in
+  ERR:*) ok "a Core node with no credential is refused at start-up, not left unauthenticated" ;;
+  *)     bad "CORE_RPC_URL with no credential should refuse" ;;
+esac
+
 note "the node"
 $DOCKER network create --subnet "$SUBNET" "$NET" >/dev/null
 $DOCKER volume create "$PROJECT-data" >/dev/null

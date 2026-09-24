@@ -1,7 +1,7 @@
 # Shipping bmc and BlockYard as one Docker package
 
-2026-09-24. A proposal, with the things that block it first, because two of them are not
-engineering problems and one of them cannot be fixed by anyone but the operator.
+2026-09-24. A proposal, with the things that block it first. One of the three is resolved; the
+other two are decisions the operator has now taken.
 
 ## What is being proposed
 
@@ -18,20 +18,20 @@ to turn both of those features off.
 
 ## Blockers, before any of the shape matters
 
-### 1. bmc has no licence, so the image cannot be published
+### 1. ~~bmc has no licence~~ — RESOLVED 2026-09-24
 
-`github.com/BobClawblaw/bitcoinmachinecode` is public with **no `LICENSE` file** and GitHub
-reports `licenseInfo: null` (checked 2026-09-24). Public is not permissive: with no licence
-granted, the default position is that nobody may redistribute it. A Docker image containing
-`bmcbitcoind` **is** redistribution, and pushing it to a public registry is publishing it.
+When this document was written, `bitcoinmachinecode` was public with **no `LICENSE` file**
+(GitHub reported `licenseInfo: null`), which meant nobody could redistribute it and a Docker
+image containing `bmcbitcoind` could not be published at all.
 
-BlockYard is Apache-2.0 and fine. The image is blocked on bmc alone, and the operator owns
-that copyright, so the fix is a decision rather than a negotiation: pick a licence, add the
-file, and the rest of this document is buildable. Worth deciding at the same time: the
-NOTICE-style question of how an AI-authored tree states authorship and copyright, which the
-project's own README already addresses in prose but not in a licence file.
+Fixed the same day, in bmc's `7b219a8c`: **Apache-2.0**, matching BlockYard, with a `NOTICE`
+that states the authorship position — every line AI-authored under human direction, the
+copyright status of such work unsettled, the grant made "to the extent that copyright
+subsists" — and carries the unaudited-software warning into every redistribution, which
+Apache §4(d) requires a fork to preserve.
 
-**Until that file exists, build this image locally and do not push it.**
+Kept here rather than deleted because it is the reason this package could not have shipped a
+week ago, and because anything else that redistributes bmc runs into the same question.
 
 ### 2. bmc's own description says "do not run this"
 
@@ -40,23 +40,31 @@ box says to run it "for study and evaluation, on a machine you can afford to los
 funds near it". A Docker package is the single most effective way ever invented to get software
 running on machines whose owners did not read the status box.
 
-That tension is a decision to take deliberately, not to route around. Three options, none of
-them wrong:
+**DECIDED 2026-09-24: mainnet is the default, and the warning is carried loudly.** The
+operator: *"default the docker package to mainnet -- I want people to be able to A/B this
+against Core mainnet if they want to."*
 
-- **Ship it anyway, with the warning carried in the image**: the compose file's first comment,
-  the README's first paragraph, and a start-up banner in the node container's log. The operator
-  is publishing an experimental node; users who reach for a Docker image are not less capable
-  of reading than users who reach for `make`.
-- **Default the package to a test chain.** `BMC_CHAIN=signet` or `testnet4` as the shipped
-  default costs an experienced user one line in `.env` and stops an unattended `docker compose
-  up` from becoming a mainnet node on somebody's laptop. It also makes the package usable on
-  an ordinary disk, which mainnet is not (see below).
-- **Do not publish at all**; keep the compose file in the repository as the documented way to
-  run it, and let people build it themselves. This is the smallest step and loses very little:
-  the build is 12 seconds of assembly plus a `git clone`.
+An earlier draft of this document recommended defaulting to signet or testnet4, on the grounds
+that it stops an unattended `docker compose up` becoming a mainnet node on somebody's laptop.
+That recommendation is withdrawn, and the reason it was wrong is worth keeping: the entire
+point of this package is that bmc's claim — a UTXO set identical to Core's, from genesis, a bit
+faster — is *checkable by other people*. A package that defaults to a chain nobody compares on
+invites nobody to check it. Making that comparison easy is worth more than the laptop it
+surprises, as long as the surprise is spelled out first.
 
-My suggestion is the second plus the first: ship, default to a test chain, carry the warning
-where it cannot be missed. Mainnet is one line away for anyone who means it.
+So the mitigation is entirely in what the package SAYS, which the README does above the fold
+and `.env.example` does in its first five lines: experimental and unaudited, no funds, amd64
+only, ~1.2 TB, roughly a day of syncing. Someone who reads none of that was not going to read a
+`BMC_CHAIN` line either.
+
+The A/B case is supported directly rather than left as an exercise: set `CORE_RPC_URL` (and a
+credential) and the monitor watches an existing Core node beside bmc, on the same page, same
+charts, same picker. It points at a Core somebody already runs rather than shipping one — a
+second node here would double the disk to ~2.4 TB, and packaging Core is not this project's
+job. `docker-compose.core.yml` covers the case where Core's credential is a cookie file.
+
+It also makes the picker complaint below go away on its own: with a synced Core beside it, the
+list is no longer empty while bmc syncs.
 
 ### 3. linux/amd64 only
 
@@ -135,6 +143,43 @@ credentials problem. This is the pattern BlockYard's Umbrel entrypoint already u
 same reason. What is *not* rendered: `blockyard.json` (the Display settings people choose in
 the UI) and `state/` (accounts, sessions, history), which belong to the app and last as long as
 the volume.
+
+## Watching the sync: RPC during IBD is on, and that is a change of posture
+
+Operator, 2026-09-24: *"can we enable rpc during the download ... it would be good for users to
+be able to monitor the ibd live."* It is on, and it already was — bmc binds its RPC listener at
+start-up, and the smoke test confirms the monitor reads a node reporting `state: ibd`. Nothing
+had to be enabled. What is worth writing down is why that looks like it contradicts the
+project's own benchmark rule, and does not.
+
+**"No RPC during IBD" is a rule about TIMED RUNS, not about operating a node.** It was added
+after run 27, where a monitoring tool polled a benchmark for 14 hours and the run's figures
+could not be called clean. Two distinct costs were measured then, and they are not the same
+shape:
+
+- **Core's `gettxoutsetinfo` forced a UTXO cache flush on every call**, about once a minute for
+  most of its run. BlockYard has since gated that: `utxoStatsWanted()` in `collect/monitor.js`
+  sends `gettxoutsetinfo` **only to a node whose `coinstatsindex` reports synced**, which
+  during an initial sync it does not. So the call that did that damage is not sent at all here.
+  (The same gate came out of a real incident — an unindexed node walking its whole UTXO set
+  every minute on a fresh Mac install.)
+- **run 27's RPC side read 10.2 TB over the run**, 203 MB/s against the sync's own 136 MB/s.
+  The cause was specific: *"on its build, each poll re-read a large index tail from the start
+  and re-walked the chain."* That is a property of the bmc build of 2026-09-18, not of answering
+  RPC. Production has moved on several deploys since.
+
+**So: monitoring a sync is supported and expected, and timing one is not.** Anyone running this
+package to produce a number rather than to watch a chain should stop the monitor first —
+`docker compose stop blockyard` — which leaves the node entirely unpolled, and start it again
+when the sync is done. That is one command, and it is in the README.
+
+**The honest gap: nobody has measured what polling a CURRENT bmc build costs during a sync.**
+The 10.2 TB figure is from a build five deploys old; whether that read amplification is gone,
+smaller or unchanged is unknown, and this package cannot find out without running a mainnet
+sync. Anyone who runs one can check it cheaply, the same way it was caught the first time:
+read the node's own I/O counters (`/proc/<pid>/io`, `read_bytes`) with the monitor running and
+again a minute after stopping it. If the difference is large, say so — it is a bmc finding, not
+a packaging one, and it would be worth a `BMC_EXTRA_CONF` or a gentler poll cadence here.
 
 ## What this costs on disk
 
