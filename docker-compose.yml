@@ -18,7 +18,7 @@ services:
       context: .
       args:
         BMC_REF: ${BMC_REF:-9a4cfb35e357513405942f0afea4c63961bb0efc}
-        BLOCKYARD_REF: ${BLOCKYARD_REF:-d5ab0852c02abf20bcd1a4603dc8aaf6fa881371}
+        BLOCKYARD_REF: ${BLOCKYARD_REF:-70a173dadd09c92ec2378b23d4adc418cc893a6f}
     image: ${IMAGE:-blockyard-bmc:dev}
     container_name: blockyard-bmc-node
     entrypoint: /app/entrypoint/bmc.sh
